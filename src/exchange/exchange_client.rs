@@ -461,6 +461,36 @@ impl ExchangeClient {
         self.post(action, signature, timestamp).await
     }
 
+    pub async fn position_tpsl_order_with_builder(
+        &self,
+        orders: Vec<ClientOrderRequest>,
+        wallet: Option<&PrivateKeySigner>,
+        mut builder: BuilderInfo,
+    ) -> Result<ExchangeResponseStatus> {
+        let wallet = wallet.unwrap_or(&self.wallet);
+        let timestamp = next_nonce();
+
+        builder.builder = builder.builder.to_lowercase();
+
+        let mut transformed_orders = Vec::new();
+
+        for order in orders {
+            transformed_orders.push(order.convert(&self.coin_to_asset)?);
+        }
+
+        let action = Actions::Order(BulkOrder {
+            orders: transformed_orders,
+            grouping: "positionTpsl".to_string(),
+            builder: Some(builder),
+        });
+        let connection_id = action.hash(timestamp, self.vault_address)?;
+        let action = serde_json::to_value(&action).map_err(|e| Error::JsonParse(e.to_string()))?;
+
+        let is_mainnet = self.http_client.is_mainnet();
+        let signature = sign_l1_action(wallet, connection_id, is_mainnet)?;
+        self.post(action, signature, timestamp).await
+    }
+
     pub async fn bulk_order_with_builder(
         &self,
         orders: Vec<ClientOrderRequest>,
